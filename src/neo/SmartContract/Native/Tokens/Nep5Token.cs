@@ -86,7 +86,7 @@ namespace Neo.SmartContract.Native.Tokens
             BigInteger totalSupply = new BigInteger(storage.Value);
             totalSupply += amount;
             storage.Value = totalSupply.ToByteArrayStandard();
-            engine.SendNotification(Hash, new Array(engine.ReferenceCounter, new StackItem[] { "Transfer", StackItem.Null, account.ToArray(), amount }));
+            engine.SendNotification(Hash, new Array(new StackItem[] { "Transfer", StackItem.Null, account.ToArray(), amount }));
         }
 
         internal protected virtual void Burn(ApplicationEngine engine, UInt160 account, BigInteger amount)
@@ -112,7 +112,7 @@ namespace Neo.SmartContract.Native.Tokens
             BigInteger totalSupply = new BigInteger(storage.Value);
             totalSupply -= amount;
             storage.Value = totalSupply.ToByteArrayStandard();
-            engine.SendNotification(Hash, new Array(engine.ReferenceCounter, new StackItem[] { "Transfer", account.ToArray(), StackItem.Null, amount }));
+            engine.SendNotification(Hash, new Array(new StackItem[] { "Transfer", account.ToArray(), StackItem.Null, amount }));
         }
 
         [ContractMethod(0, ContractParameterType.String, Name = "name", SafeMethod = true)]
@@ -172,7 +172,7 @@ namespace Neo.SmartContract.Native.Tokens
         protected virtual bool Transfer(ApplicationEngine engine, UInt160 from, UInt160 to, BigInteger amount)
         {
             if (amount.Sign < 0) throw new ArgumentOutOfRangeException(nameof(amount));
-            if (!from.Equals(engine.CallingScriptHash) && !InteropService.CheckWitness(engine, from))
+            if (!from.Equals(engine.CallingScriptHash) && !InteropService.Runtime.CheckWitnessInternal(engine, from))
                 return false;
             ContractState contract_to = engine.Snapshot.Contracts.TryGet(to);
             if (contract_to?.Payable == false) return false;
@@ -222,7 +222,7 @@ namespace Neo.SmartContract.Native.Tokens
                     storage_to.Value = state_to.ToByteArray();
                 }
             }
-            engine.SendNotification(Hash, new Array(engine.ReferenceCounter, new StackItem[] { "Transfer", from.ToArray(), to.ToArray(), amount }));
+            engine.SendNotification(Hash, new Array(new StackItem[] { "Transfer", from.ToArray(), to.ToArray(), amount }));
             return true;
         }
 

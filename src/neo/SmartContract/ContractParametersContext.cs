@@ -130,7 +130,7 @@ namespace Neo.SmartContract
 
         public bool AddSignature(Contract contract, ECPoint pubkey, byte[] signature)
         {
-            if (contract.Script.IsMultiSigContract(out _, out _))
+            if (contract.Script.IsMultiSigContract(out _, out ECPoint[] points))
             {
                 ContextItem item = CreateItem(contract);
                 if (item == null) return false;
@@ -139,24 +139,6 @@ namespace Neo.SmartContract
                     item.Signatures = new Dictionary<ECPoint, byte[]>();
                 else if (item.Signatures.ContainsKey(pubkey))
                     return false;
-                List<ECPoint> points = new List<ECPoint>();
-                {
-                    int i = 0;
-                    switch (contract.Script[i++])
-                    {
-                        case 1:
-                            ++i;
-                            break;
-                        case 2:
-                            i += 2;
-                            break;
-                    }
-                    while (contract.Script[i++] == 33)
-                    {
-                        points.Add(ECPoint.DecodePoint(contract.Script.AsSpan(i, 33), ECCurve.Secp256r1));
-                        i += 33;
-                    }
-                }
                 if (!points.Contains(pubkey)) return false;
                 item.Signatures.Add(pubkey, signature);
                 if (item.Signatures.Count == contract.ParameterList.Length)

@@ -339,7 +339,7 @@ namespace Neo.Wallets
                 {
                     byte[] witness_script = GetAccount(hash)?.Contract?.Script ?? snapshot.Contracts.TryGet(hash)?.Script;
                     if (witness_script is null) continue;
-                    tx.NetworkFee += CalculateNetWorkFee(witness_script, ref size);
+                    tx.NetworkFee += CalculateNetworkFee(witness_script, ref size);
                 }
                 tx.NetworkFee += size * NativeContract.Policy.GetFeePerByte(snapshot);
                 if (value >= tx.SystemFee + tx.NetworkFee) return tx;
@@ -347,26 +347,26 @@ namespace Neo.Wallets
             throw new InvalidOperationException("Insufficient GAS");
         }
 
-        public static long CalculateNetWorkFee(byte[] witness_script, ref int size)
+        public static long CalculateNetworkFee(byte[] witness_script, ref int size)
         {
             long networkFee = 0;
 
             if (witness_script.IsSignatureContract())
             {
-                size += 66 + witness_script.GetVarSize();
-                networkFee += ApplicationEngine.OpCodePrices[OpCode.PUSHBYTES64] + ApplicationEngine.OpCodePrices[OpCode.PUSHBYTES33] + ApplicationEngine.OpCodePrices[OpCode.PUSHNULL] + InteropService.GetPrice(InteropService.Neo_Crypto_ECDsaVerify, null);
+                size += 67 + witness_script.GetVarSize();
+                networkFee += ApplicationEngine.OpCodePrices[OpCode.PUSHDATA1] + ApplicationEngine.OpCodePrices[OpCode.PUSHDATA1] + ApplicationEngine.OpCodePrices[OpCode.PUSHNULL] + InteropService.GetPrice(InteropService.Crypto.ECDsaVerify, null);
             }
             else if (witness_script.IsMultiSigContract(out int m, out int n))
             {
-                int size_inv = 65 * m;
+                int size_inv = 66 * m;
                 size += IO.Helper.GetVarSize(size_inv) + size_inv + witness_script.GetVarSize();
-                networkFee += ApplicationEngine.OpCodePrices[OpCode.PUSHBYTES64] * m;
+                networkFee += ApplicationEngine.OpCodePrices[OpCode.PUSHDATA1] * m;
                 using (ScriptBuilder sb = new ScriptBuilder())
                     networkFee += ApplicationEngine.OpCodePrices[(OpCode)sb.EmitPush(m).ToArray()[0]];
-                networkFee += ApplicationEngine.OpCodePrices[OpCode.PUSHBYTES33] * n;
+                networkFee += ApplicationEngine.OpCodePrices[OpCode.PUSHDATA1] * n;
                 using (ScriptBuilder sb = new ScriptBuilder())
                     networkFee += ApplicationEngine.OpCodePrices[(OpCode)sb.EmitPush(n).ToArray()[0]];
-                networkFee += ApplicationEngine.OpCodePrices[OpCode.PUSHNULL] + InteropService.GetPrice(InteropService.Neo_Crypto_ECDsaVerify, null) * n;
+                networkFee += ApplicationEngine.OpCodePrices[OpCode.PUSHNULL] + InteropService.GetPrice(InteropService.Crypto.ECDsaVerify, null) * n;
             }
             else
             {
@@ -382,10 +382,37 @@ namespace Neo.Wallets
             foreach (UInt160 scriptHash in context.ScriptHashes)
             {
                 WalletAccount account = GetAccount(scriptHash);
-                if (account?.HasKey != true) continue;
-                KeyPair key = account.GetKey();
-                byte[] signature = context.Verifiable.Sign(key);
-                fSuccess |= context.AddSignature(account.Contract, key.PublicKey, signature);
+                if (account is null) continue;
+
+                // Try to sign self-contained multiSig
+
+                Contract multiSigContract = account.Contract;
+
+                if (multiSigContract != null &&
+                    multiSigContract.Script.IsMultiSigContract(out int m, out ECPoint[] points))
+                {
+                    foreach (var point in points)
+                    {
+                        account = GetAccount(point);
+                        if (account?.HasKey != true) continue;
+                        KeyPair key = account.GetKey();
+                        byte[] signature = context.Verifiable.Sign(key);
+                        fSuccess |= context.AddSignature(multiSigContract, key.PublicKey, signature);
+                        if (fSuccess) m--;
+                        if (context.Completed || m <= 0) break;
+                    }
+                }
+                else
+                {
+                    // Try to sign with regular accounts
+
+                    if (account.HasKey)
+                    {
+                        KeyPair key = account.GetKey();
+                        byte[] signature = context.Verifiable.Sign(key);
+                        fSuccess |= context.AddSignature(account.Contract, key.PublicKey, signature);
+                    }
+                }
             }
             return fSuccess;
         }

@@ -19,6 +19,7 @@ namespace Neo.SmartContract.Native.Tokens
     public sealed class NeoToken : Nep5Token<NeoToken.AccountState>
     {
         public override string ServiceName => "Neo.Native.Tokens.NEO";
+        public override int Id => -1;
         public override string Name => "NEO";
         public override string Symbol => "neo";
         public override byte Decimals => 0;
@@ -155,7 +156,7 @@ namespace Neo.SmartContract.Native.Tokens
         {
             UInt160 account = new UInt160(args[0].GetSpan());
             ECPoint[] pubkeys = ((Array)args[1]).Select(p => p.GetSpan().AsSerializable<ECPoint>()).ToArray();
-            if (!InteropService.CheckWitness(engine, account)) return false;
+            if (!InteropService.Runtime.CheckWitnessInternal(engine, account)) return false;
             StorageKey key_account = CreateAccountKey(account);
             if (engine.Snapshot.Storages.TryGet(key_account) is null) return false;
             StorageItem storage_account = engine.Snapshot.Storages.GetAndChange(key_account);
@@ -201,7 +202,7 @@ namespace Neo.SmartContract.Native.Tokens
 
         public IEnumerable<(ECPoint PublicKey, BigInteger Votes)> GetRegisteredValidators(StoreView snapshot)
         {
-            byte[] prefix_key = StorageKey.CreateSearchPrefix(Hash, new[] { Prefix_Validator });
+            byte[] prefix_key = StorageKey.CreateSearchPrefix(Id, new[] { Prefix_Validator });
             return snapshot.Storages.Find(prefix_key).Select(p =>
             (
                 p.Key.Key.AsSerializable<ECPoint>(1),

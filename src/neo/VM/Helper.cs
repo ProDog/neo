@@ -9,6 +9,7 @@ using System.Numerics;
 using System.Text;
 using Array = Neo.VM.Types.Array;
 using Boolean = Neo.VM.Types.Boolean;
+using Buffer = Neo.VM.Types.Buffer;
 
 namespace Neo.VM
 {
@@ -27,7 +28,7 @@ namespace Neo.VM
             sb.Emit(OpCode.NEWARRAY);
             sb.EmitPush(operation);
             sb.EmitPush(scriptHash);
-            sb.EmitSysCall(InteropService.System_Contract_Call);
+            sb.EmitSysCall(InteropService.Contract.Call);
             return sb;
         }
 
@@ -39,7 +40,7 @@ namespace Neo.VM
             sb.Emit(OpCode.PACK);
             sb.EmitPush(operation);
             sb.EmitPush(scriptHash);
-            sb.EmitSysCall(InteropService.System_Contract_Call);
+            sb.EmitSysCall(InteropService.Contract.Call);
             return sb;
         }
 
@@ -51,7 +52,7 @@ namespace Neo.VM
             sb.Emit(OpCode.PACK);
             sb.EmitPush(operation);
             sb.EmitPush(scriptHash);
-            sb.EmitSysCall(InteropService.System_Contract_Call);
+            sb.EmitSysCall(InteropService.Contract.Call);
             return sb;
         }
 
@@ -175,16 +176,22 @@ namespace Neo.VM
 
         public static int GetByteLength(this StackItem item)
         {
-            if (!(item is PrimitiveType primitive))
-                throw new ArgumentException();
-            return primitive.GetByteLength();
+            return item switch
+            {
+                PrimitiveType p => p.Size,
+                Buffer b => b.Size,
+                _ => throw new ArgumentException(),
+            };
         }
 
         public static ReadOnlySpan<byte> GetSpan(this StackItem item)
         {
-            if (!(item is PrimitiveType primitive))
-                throw new ArgumentException();
-            return primitive.ToByteArray();
+            return item switch
+            {
+                PrimitiveType p => p.Span,
+                Buffer b => b.InnerBuffer,
+                _ => throw new ArgumentException(),
+            };
         }
 
         public static string GetString(this StackItem item)
@@ -218,6 +225,7 @@ namespace Neo.VM
 
         private static ContractParameter ToParameter(StackItem item, List<(StackItem, ContractParameter)> context)
         {
+            if (item is null) throw new ArgumentNullException();
             ContractParameter parameter = null;
             switch (item)
             {
@@ -252,18 +260,18 @@ namespace Neo.VM
                         Value = item.ToBoolean()
                     };
                     break;
-                case ByteArray _:
+                case ByteArray array:
                     parameter = new ContractParameter
                     {
                         Type = ContractParameterType.ByteArray,
-                        Value = item.GetSpan().ToArray()
+                        Value = array.Span.ToArray()
                     };
                     break;
-                case Integer _:
+                case Integer i:
                     parameter = new ContractParameter
                     {
                         Type = ContractParameterType.Integer,
-                        Value = item.GetBigInteger()
+                        Value = i.ToBigInteger()
                     };
                     break;
                 case InteropInterface _:
@@ -278,8 +286,8 @@ namespace Neo.VM
                         Type = ContractParameterType.Any
                     };
                     break;
-                default: // Null included
-                    throw new ArgumentException();
+                default:
+                    throw new ArgumentException($"StackItemType({item.Type}) is not supported to ContractParameter.");
             }
             return parameter;
         }
@@ -291,6 +299,8 @@ namespace Neo.VM
 
         private static StackItem ToStackItem(ContractParameter parameter, List<(StackItem, ContractParameter)> context)
         {
+            if (parameter is null) throw new ArgumentNullException();
+            if (parameter.Value is null) return StackItem.Null;
             StackItem stackItem = null;
             switch (parameter.Type)
             {
@@ -312,7 +322,10 @@ namespace Neo.VM
                         (stackItem, _) = context.FirstOrDefault(p => ReferenceEquals(p.Item2, parameter));
                     if (stackItem is null)
                     {
-                        stackItem = new Map(((IList<KeyValuePair<ContractParameter, ContractParameter>>)parameter.Value).ToDictionary(p => (PrimitiveType)ToStackItem(p.Key, context), p => ToStackItem(p.Value, context)));
+                        Map map = new Map();
+                        foreach (var pair in (IList<KeyValuePair<ContractParameter, ContractParameter>>)parameter.Value)
+                            map[(PrimitiveType)ToStackItem(pair.Key, context)] = ToStackItem(pair.Value, context);
+                        stackItem = map;
                         context.Add((stackItem, parameter));
                     }
                     break;
@@ -337,8 +350,6 @@ namespace Neo.VM
                     break;
                 case ContractParameterType.String:
                     stackItem = (string)parameter.Value;
-                    break;
-                case ContractParameterType.InteropInterface:
                     break;
                 default:
                     throw new ArgumentException($"ContractParameterType({parameter.Type}) is not supported to StackItem.");

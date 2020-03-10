@@ -18,6 +18,7 @@ namespace Neo.SmartContract.Native
     public sealed class PolicyContract : NativeContract
     {
         public override string ServiceName => "Neo.Native.Policy";
+        public override int Id => -3;
 
         private const byte Prefix_MaxTransactionsPerBlock = 23;
         private const byte Prefix_FeePerByte = 10;
@@ -41,7 +42,7 @@ namespace Neo.SmartContract.Native
         {
             UInt256 prev_hash = engine.Snapshot.PersistingBlock.PrevHash;
             TrimmedBlock prev_block = engine.Snapshot.Blocks[prev_hash];
-            return InteropService.CheckWitness(engine, prev_block.NextConsensus);
+            return InteropService.Runtime.CheckWitnessInternal(engine, prev_block.NextConsensus);
         }
 
         internal override bool Initialize(ApplicationEngine engine)
